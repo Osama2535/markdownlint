@@ -62,6 +62,7 @@ function parseWithOffset(
   micromarkOptions,
   referencesDefined,
   lineDelta,
+  staseq,
   ancestor
 ) {
   // Use micromark to parse document into Events
@@ -71,7 +72,8 @@ function parseWithOffset(
 
   // Create Token objects
   const document = [];
-  let flatTokens = [];
+  let tokenLists = new Map();
+  let seq = 0;
   /** @type {Token} */
   const root = {
     "type": "data",
@@ -107,13 +109,17 @@ function parseWithOffset(
         endColumn,
         text,
         "children": [],
-        "parent": ((previous === root) ? (ancestor || null) : previous)
+        "parent": ((previous === root) ? (ancestor || null) : previous),
+        "seq": seq + staseq
       };
+      seq++;
       if (ancestor) {
         Object.defineProperty(current, htmlFlowSymbol, { "value": true });
       }
       previous.children.push(current);
-      flatTokens.push(current);
+      const l = tokenLists.get(type) || [];
+      l.push(current);
+      tokenLists.set(type, l);
       if ((current.type === "htmlFlow") && !isHtmlFlowComment(current)) {
         skipHtmlFlowChildren = true;
         if (!reparseOptions || !lines) {
@@ -137,12 +143,18 @@ function parseWithOffset(
           reparseOptions,
           referencesDefined,
           current.startLine - 1,
+          seq,
           current
         );
         current.children = tokens;
         // Avoid stack overflow of Array.push(...spread)
         // eslint-disable-next-line unicorn/prefer-spread
-        flatTokens = flatTokens.concat(tokens[flatTokensSymbol]);
+        for (const [tt, ll] of tokens[flatTokensSymbol].entries()) {
+          seq += ll.length;
+          let l = tokenLists.get(tt) || [];
+          l = l.concat(ll);
+          tokenLists.set(tt, l);
+        }
       }
     } else if (kind === "exit") {
       if (type === "htmlFlow") {
@@ -158,7 +170,7 @@ function parseWithOffset(
   }
 
   // Return document
-  Object.defineProperty(document, flatTokensSymbol, { "value": flatTokens });
+  Object.defineProperty(document, flatTokensSymbol, { "value": tokenLists });
   Object.freeze(document);
   return document;
 }
@@ -180,6 +192,7 @@ function parse(
     markdown,
     micromarkOptions,
     referencesDefined,
+    0,
     0
   );
 }

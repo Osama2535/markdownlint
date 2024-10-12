@@ -126,9 +126,15 @@ function filterByPredicate(tokens, allowed, transformChildren) {
 function filterByTypes(tokens, types, htmlFlow) {
   const predicate = (token) =>
     (htmlFlow || !inHtmlFlow(token)) && types.includes(token.type);
-  const flatTokens = tokens[flatTokensSymbol];
-  if (flatTokens) {
-    return flatTokens.filter(predicate);
+  const tokenLists = tokens[flatTokensSymbol];
+  if (tokenLists) {
+    let ret = [];
+    for (const type of types) {
+      ret = ret.concat(tokenLists.get(type) || []);
+    }
+    ret = ret.filter((token) => htmlFlow || !inHtmlFlow(token));
+    ret.sort((a, b) => a.seq - b.seq);
+    return ret;
   }
   return filterByPredicate(tokens, predicate);
 }

@@ -383,7 +383,9 @@ function getReferenceLinkImageData(tokens) {
         // definitions and definitionLineIndices
         "definitionLabelString", "gfmFootnoteDefinitionLabelString",
         // references and shortcuts
-        "gfmFootnoteCall", "image", "link"
+        "gfmFootnoteCall", "image", "link",
+        // undefined link labels
+        "undefinedReferenceCollapsed", "undefinedReferenceFull", "undefinedReferenceShortcut"
       ]
     );
   for (const token of filteredTokens) {
@@ -453,6 +455,27 @@ function getReferenceLinkImageData(tokens) {
             referenceData.push(referenceDatum);
             dictionary.set(reference, referenceData);
           }
+        }
+        break;
+      case "undefinedReferenceCollapsed":
+      case "undefinedReferenceFull":
+      case "undefinedReferenceShortcut":
+        {
+          const label = token.children.map((t) => t.text).join("");
+          const isShortcut = token.type === "undefinedReferenceShortcut";
+          const referenceDatum = [
+            token.startLine - 1,
+            token.startColumn - 1,
+            token.text.length,
+            label.length,
+            0 // (referenceString?.text || "").length
+          ];
+          const reference =
+            normalizeReference(/*referenceString?.text ||*/ label);
+          const dictionary = isShortcut ? shortcuts : references;
+          const referenceData = dictionary.get(reference) || [];
+          referenceData.push(referenceDatum);
+          dictionary.set(reference, referenceData);
         }
         break;
     }

@@ -2,6 +2,7 @@
 
 /* eslint-disable n/no-missing-import */
 
+export { labelEnd } from "micromark-core-commonmark";
 export { directive } from "micromark-extension-directive";
 export { gfmAutolinkLiteral } from "micromark-extension-gfm-autolink-literal";
 export { gfmFootnote } from "micromark-extension-gfm-footnote";

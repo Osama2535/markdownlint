@@ -8,7 +8,8 @@ const { flatTokensSymbol, htmlFlowSymbol, newLineRe } = require("./shared.js");
 
 /** @typedef {import("markdownlint-micromark").Event} Event */
 /** @typedef {import("markdownlint-micromark").ParseOptions} MicromarkParseOptions */
-/** @typedef {import("../lib/markdownlint.js").MicromarkToken} Token */
+/** @typedef {import("markdownlint-micromark").Token} Token */
+/** @typedef {import("../lib/markdownlint.js").MicromarkToken} MicromarkToken */
 
 /**
  * Parse options.
@@ -44,17 +45,119 @@ function getEvents(
     micromark.math()
   );
 
-  // Use micromark to parse document into Events
-  const encoding = undefined;
-  const eol = true;
-  const parseContext = micromark.parse(micromarkParseOptions);
-  if (shimReferences) {
-    // Customize ParseContext to treat all references as defined
-    parseContext.defined.includes = (searchElement) => searchElement.length > 0;
+  // // Shim labelEnd to identify undefined link labels
+  /** @type {Event[][]} */
+  const artificialEventLists = [];
+  const { labelEnd } = micromark;
+  const tokenizeOriginal = labelEnd.tokenize;
+  function tokenizeShim(effects, okOriginal, nokOriginal) {
+    // TODO: Type this as TokenizeContext
+    const tokenizeContext = this;
+    const nokShim = (code) => {
+      // TODO: Remove next
+      /** @type {Event[]} */
+      const events = tokenizeContext.events;
+
+      // Find start of label
+      let indexStart = events.length;
+      while (--indexStart >= 0) {
+        const event = events[indexStart];
+        const [ kind, token ] = event;
+        if (kind === "enter") {
+          const { type, _balanced } = token;
+          if ((type === "labelImage") || (type === "labelLink")) {
+            break;
+          }
+        }
+      }
+
+      if (indexStart >= 0) {
+        // Create artificial enter/exit and all "data" events within
+        const eventStart = events[indexStart];
+        const eventEnd = events[events.length - 1];
+        /** @type {Token} */
+        const artificialReferenceType = {
+          "type": "undefinedReferenceShortcut",
+          "start": eventStart[1].start,
+          "end": eventEnd[1].end
+        };
+        /** @type {Token} */
+        const artificialReference = {
+          ...artificialReferenceType,
+          "type": "undefinedReference"
+        };
+        const rel = events.slice(indexStart);
+        const dataEvents = rel.filter((event) => ["data", "lineEnding"].includes(event[1].type));
+
+        // ...
+        let skip = false;
+        const prev = artificialEventLists.length && artificialEventLists[artificialEventLists.length - 1][0];
+        if (prev && (prev[1].end.line === artificialReferenceType.start.line) && (prev[1].end.column === artificialReferenceType.start.column)) {
+          if (dataEvents.length === 0) {
+            prev[1].type = "undefinedReferenceCollapsed";
+            prev[1].end = eventEnd[1].end;
+            // const pl = artificialEventLists[artificialEventLists.length - 1];
+            // pl.splice(pl.length - 1, 0, ...rel.filter((event) => event[1].type === "labelMarker"));
+            skip = true;
+          } else {
+            artificialReferenceType.type = "undefinedReferenceFull";
+            artificialReferenceType.start = prev[1].start;
+          }
+        }
+
+        if (!skip) {
+          const dataText = dataEvents.filter((de) => de[0] === "enter").map((de) => tokenizeContext.sliceSerialize(de[1])).join("").trim();
+          if (
+            (dataText.length > 0) &&
+            !dataText.includes("]")
+          ) {
+            /** @type {Event[]} */
+            const artificialEvents = [];
+            artificialEvents.push([ "enter", artificialReferenceType, tokenizeContext ]);
+            artificialEvents.push([ "enter", artificialReference, tokenizeContext ]);
+            for (const event of dataEvents) {
+              artificialEvents.push([ event[0], { ...event[1] }, tokenizeContext ]);
+            }
+            artificialEvents.push([ "exit", artificialReference, tokenizeContext ]);
+            artificialEvents.push([ "exit", artificialReferenceType, tokenizeContext ]);
+            artificialEventLists.push(artificialEvents);
+          }
+        }
+      }
+
+      // Continue with original behavior
+      return nokOriginal(code);
+    };
+
+    // Shim nok handler of labelEnd's tokenize
+    return tokenizeOriginal.call(tokenizeContext, effects, okOriginal, nokShim);
   }
-  const chunks = micromark.preprocess()(markdown, encoding, eol);
-  const events = micromark.postprocess(parseContext.document().write(chunks));
-  return events;
+
+  try {
+    // Shim labelEnd behavior
+    labelEnd.tokenize = tokenizeShim;
+
+    // Use micromark to parse document into Events
+    const encoding = undefined;
+    const eol = true;
+    const parseContext = micromark.parse(micromarkParseOptions);
+    if (shimReferences) {
+      // Customize ParseContext to treat all references as defined
+      // parseContext.defined.includes = (searchElement) => searchElement.length > 0;
+    }
+    const chunks = micromark.preprocess()(markdown, encoding, eol);
+    let events = micromark.postprocess(parseContext.document().write(chunks));
+
+    // Append artificial events and return all events
+    for (const artificialEventList of artificialEventLists) {
+      events = events.concat(artificialEventList);
+    }
+    return events;
+
+  } finally {
+    // Restore labelEnd behavior
+    labelEnd.tokenize = tokenizeOriginal;
+  }
 }
 
 /**
@@ -64,8 +167,8 @@ function getEvents(
  * @param {ParseOptions} [parseOptions] Options.
  * @param {MicromarkParseOptions} [micromarkParseOptions] Options for micromark.
  * @param {number} [lineDelta] Offset for start/end line.
- * @param {Token} [ancestor] Parent of top-most tokens.
- * @returns {Token[]} Micromark tokens.
+ * @param {MicromarkToken} [ancestor] Parent of top-most tokens.
+ * @returns {MicromarkToken[]} Micromark tokens.
  */
 function parseInternal(
   markdown,
@@ -83,7 +186,7 @@ function parseInternal(
   // Create Token objects
   const document = [];
   let flatTokens = [];
-  /** @type {Token} */
+  /** @type {MicromarkToken} */
   const root = {
     "type": "data",
     "startLine": -1,
@@ -183,7 +286,7 @@ function parseInternal(
  *
  * @param {string} markdown Markdown document.
  * @param {ParseOptions} [parseOptions] Options.
- * @returns {Token[]} Micromark tokens.
+ * @returns {MicromarkToken[]} Micromark tokens.
  */
 function parse(markdown, parseOptions) {
   return parseInternal(markdown, parseOptions);

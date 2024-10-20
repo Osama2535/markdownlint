@@ -434,6 +434,8 @@ declare type Construct = {
     add?: 'after' | 'before' | undefined
 }
 
+declare type Construct_2 = Construct;
+
 /**
  * Several constructs, mapped from their initial codes.
  */
@@ -974,6 +976,9 @@ declare interface HtmlOptions_3 extends Object {
      */
     displayMode?: never
 }
+
+/** @type {Construct} */
+export declare const labelEnd: Construct_2;
 
 /**
  * Type of line ending in markdown.
@@ -1746,4 +1751,13 @@ export declare interface TokenTypeMap {
     mathTextData: 'mathTextData'
     mathTextPadding: 'mathTextPadding'
     mathTextSequence: 'mathTextSequence'
+}
+
+// Source: [CUSTOM]
+
+export declare interface TokenTypeMap {
+    undefinedReference: 'undefinedReference'
+    undefinedReferenceCollapsed: 'undefinedReferenceCollapsed'
+    undefinedReferenceFull: 'undefinedReferenceFull'
+    undefinedReferenceShortcut: 'undefinedReferenceShortcut'
 }

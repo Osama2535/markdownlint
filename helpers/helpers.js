@@ -383,7 +383,9 @@ function getReferenceLinkImageData(tokens) {
         // definitions and definitionLineIndices
         "definitionLabelString", "gfmFootnoteDefinitionLabelString",
         // references and shortcuts
-        "gfmFootnoteCall", "image", "link"
+        "gfmFootnoteCall", "image", "link",
+        // undefined link labels
+        "undefinedReferenceCollapsed", "undefinedReferenceFull", "undefinedReferenceShortcut"
       ]
     );
   for (const token of filteredTokens) {
@@ -442,17 +444,33 @@ function getReferenceLinkImageData(tokens) {
             const referenceDatum = [
               token.startLine - 1,
               token.startColumn - 1,
-              token.text.length,
-              label.length,
-              (referenceString?.text || "").length
+              token.text.length
             ];
-            const reference =
-              normalizeReference(referenceString?.text || label);
+            const reference = normalizeReference(referenceString?.text || label);
             const dictionary = isShortcut ? shortcuts : references;
             const referenceData = dictionary.get(reference) || [];
             referenceData.push(referenceDatum);
             dictionary.set(reference, referenceData);
           }
+        }
+        break;
+      case "undefinedReferenceCollapsed":
+      case "undefinedReferenceFull":
+      case "undefinedReferenceShortcut":
+        {
+          const undefinedReference = micromark.getDescendantsByType(token, [ "undefinedReference" ])[0];
+          const label = undefinedReference.children.map((t) => t.text).join("");
+          const isShortcut = (token.type === "undefinedReferenceShortcut");
+          const referenceDatum = [
+            token.startLine - 1,
+            token.startColumn - 1,
+            token.text.length
+          ];
+          const reference = normalizeReference(label);
+          const dictionary = isShortcut ? shortcuts : references;
+          const referenceData = dictionary.get(reference) || [];
+          referenceData.push(referenceDatum);
+          dictionary.set(reference, referenceData);
         }
         break;
     }
